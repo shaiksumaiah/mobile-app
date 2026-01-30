@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Dimensions, SafeAreaView, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Dimensions, SafeAreaView, ScrollView, ActivityIndicator } from 'react-native';
 import { Video } from 'expo-av';
 import { X, Gamepad2, PenTool, Sparkles, Play, Coins } from 'lucide-react-native';
 import { logEvent } from '../services/AnalyticsService';
@@ -15,6 +15,9 @@ const VideoPlayerScreen = ({ route, navigation }) => {
     const [lastActivityTime, setLastActivityTime] = useState(0);
     const [completedActivities, setCompletedActivities] = useState(0);
     const [coins, setCoins] = useState(0);
+    const [error, setError] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [retryCount, setRetryCount] = useState(0);
 
     // Interval: 1 minute (60 seconds)
     const ACTIVITY_INTERVAL = 60;
@@ -23,6 +26,11 @@ const VideoPlayerScreen = ({ route, navigation }) => {
 
     const handlePlaybackStatusUpdate = (playbackStatus) => {
         setStatus(playbackStatus);
+
+        if (playbackStatus.error) {
+            console.error('Playback error:', playbackStatus.error);
+            setError(playbackStatus.error);
+        }
 
         if (playbackStatus.isPlaying) {
             const currentTimeInSec = Math.floor(playbackStatus.positionMillis / 1000);
@@ -36,6 +44,28 @@ const VideoPlayerScreen = ({ route, navigation }) => {
                 setIsActivityModalVisible(true);
                 logEvent('video_paused_for_activity', { topicId: topic.id, time: currentTimeInSec });
             }
+        }
+    };
+
+    const handleVideoError = (errorMsg) => {
+        console.error('Video Player Error:', errorMsg);
+        setError(errorMsg);
+        setIsLoading(false);
+        logEvent('video_playback_failed', { topicId: topic.id, error: errorMsg });
+    };
+
+    const handleVideoLoad = () => {
+        setIsLoading(false);
+        setError(null);
+        logEvent('video_playback_started', { topicId: topic.id });
+    };
+
+    const handleRetry = () => {
+        setError(null);
+        setIsLoading(true);
+        setRetryCount(prev => prev + 1);
+        if (videoRef.current) {
+            videoRef.current.loadAsync({ uri: topic.videoUrl }, {}, true);
         }
     };
 
@@ -81,13 +111,33 @@ const VideoPlayerScreen = ({ route, navigation }) => {
 
             <View style={styles.videoContainer}>
                 <Video
+                    key={`${topic.id}-${retryCount}`}
                     ref={videoRef}
                     style={styles.video}
                     source={{ uri: topic.videoUrl }}
                     useNativeControls
                     resizeMode="contain"
+                    shouldPlay
                     onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+                    onError={handleVideoError}
+                    onLoad={handleVideoLoad}
+                    onLoadStart={() => setIsLoading(true)}
                 />
+                {isLoading && !error && (
+                    <View style={styles.overlay}>
+                        <ActivityIndicator size="large" color="#F59E0B" />
+                        <Text style={styles.overlayText}>Loading Video...</Text>
+                    </View>
+                )}
+                {error && (
+                    <View style={[styles.overlay, styles.errorOverlay]}>
+                        <Text style={styles.errorTitle}>Playback Error</Text>
+                        <Text style={styles.errorText}>{typeof error === 'string' ? error : 'Something went wrong'}</Text>
+                        <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+                            <Text style={styles.retryText}>Retry</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
 
             <View style={styles.interactiveLayer}>
@@ -339,6 +389,45 @@ const styles = StyleSheet.create({
         fontSize: 10,
         color: '#6B7280',
         textAlign: 'center',
+    },
+    overlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+    },
+    overlayText: {
+        color: 'white',
+        marginTop: 12,
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    errorOverlay: {
+        backgroundColor: 'rgba(0,0,0,0.9)',
+        padding: 20,
+    },
+    errorTitle: {
+        color: '#EF4444',
+        fontSize: 18,
+        fontWeight: '800',
+        marginBottom: 8,
+    },
+    errorText: {
+        color: 'white',
+        fontSize: 14,
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    retryButton: {
+        backgroundColor: '#F59E0B',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 12,
+    },
+    retryText: {
+        color: 'white',
+        fontWeight: '700',
     },
 });
 

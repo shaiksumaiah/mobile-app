@@ -28,7 +28,7 @@ const GamesListScreen = ({ navigation }) => {
         logEvent('game_download_started', { gameId: game.id, title: game.title });
 
         try {
-            const url = game.downloadUrl.startsWith('http') ? game.downloadUrl : 'https://raw.githubusercontent.com/gabrielecirulli/2048/master/index.html';
+            const url = game.downloadUrl;
 
             const uri = await downloadGame(game.id, url, (p) => {
                 setProgress(prev => ({ ...prev, [game.id]: p }));
@@ -37,8 +37,13 @@ const GamesListScreen = ({ navigation }) => {
             setDownloadedGames(prev => ({ ...prev, [game.id]: uri }));
             logEvent('game_download_success', { gameId: game.id });
         } catch (error) {
+            console.error('Game download error:', error);
             logEvent('game_download_failed', { gameId: game.id, error: error.message });
-            Alert.alert('Download Failed', 'Could not download the game. Please try again.');
+            Alert.alert(
+                'Download Failed',
+                error.message || 'Could not download the game. Please try again.',
+                [{ text: 'OK' }]
+            );
         } finally {
             setDownloading(prev => ({ ...prev, [game.id]: false }));
         }
